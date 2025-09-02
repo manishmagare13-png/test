@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Usage: ./remote_dir_setup_root.sh <hostname> <target_user> <config_file>
+
+HOST="$1"
+TARGET_USER="$2"
+CONFIG_FILE="$3"
+SSH_USER="azureuser"  # Default Azure login user
+LOG_FILE="remote_dir_setup_root.log"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+
+# Input validation
+if [[ -z "$HOST" || -z "$TARGET_USER" || -z "$CONFIG_FILE" ]]; then
+    log "Usage: $0 <hostname> <target_user> <config_file>"
+    exit 1
+fi
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    log "Config file '$CONFIG_FILE' not found."
+    exit 2
+fi
+
+log "Connecting to $HOST as $SSH_USER..."
+
+# Read config and prepare remote commands
+REMOTE_COMMANDS=""
+while IFS= read -r DIR_PATH; do
+    [[ -z "$DIR_PATH" || "$DIR_PATH" =~ ^# ]] && continue
+    REMOTE_COMMANDS+="mkdir -p '$DIR_PATH' && chown $TARGET_USER:$TARGET_USER '$DIR_PATH' && chmod 755 '$DIR_PATH'; "
+done < "$CONFIG_FILE"
+
+# Execute remotely as root
+ssh -tt "$SSH_USER@$HOST" <<EOF
+echo "Switching to root..."
+sudo su - <<INNER
+$REMOTE_COMMANDS
+INNER
+EOF
+
+log "Directory setup completed on $HOST."
